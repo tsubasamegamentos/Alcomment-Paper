@@ -1,0 +1,2463 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIコメントペーパー — 学習支援ツール</title>
+  <meta name="description" content="過去の文章を学習し、あなたの文体で講義コメントペーパーの下書きを生成する学習支援ツール。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="training_data.js"></script>
+  <script src="training_data_en.js"></script>
+  <style>
+    /* ============================================
+       DESIGN SYSTEM — Clean & White
+       ============================================ */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #F9FAFB;
+      --card: #FFFFFF;
+      --text: #374151;
+      --text-light: #6B7280;
+      --text-muted: #9CA3AF;
+      --accent: #3B82F6;
+      --accent-hover: #2563EB;
+      --accent-light: #DBEAFE;
+      --accent-ultra-light: #EFF6FF;
+      --border: #E5E7EB;
+      --border-focus: #93C5FD;
+      --success: #10B981;
+      --success-light: #D1FAE5;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --transition: 0.2s ease;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-weight: 400;
+      min-height: 100vh;
+    }
+
+    /* ============================================
+       HEADER
+       ============================================ */
+    .header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .header-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), #818CF8);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: white;
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .logo-text span {
+      color: var(--accent);
+    }
+
+    .header-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+      background: var(--accent-light);
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ============================================
+       MAIN LAYOUT — 2-Column Grid
+       ============================================ */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 20px 80px;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .col-left {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .col-right {
+      position: sticky;
+      top: 100px;
+    }
+
+    .gen-btn-wrap {
+      margin-bottom: 0;
+    }
+
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .col-right {
+        position: static;
+      }
+    }
+
+    /* ============================================
+       MODALS
+       ============================================ */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal-box {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+      text-align: center;
+      animation: modalIn 0.3s ease;
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .modal-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    .modal-box h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .modal-box p {
+      font-size: 14px;
+      color: var(--text-light);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .btn-google {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      color: var(--text);
+    }
+
+    .btn-google:hover {
+      box-shadow: var(--shadow-md);
+      border-color: #93C5FD;
+    }
+
+    .btn-ad {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #3B82F6, #2563EB);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 28px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .btn-ad:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-ad:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .ad-countdown {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+
+    .modal-skip {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 16px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .modal-skip:hover {
+      color: var(--accent);
+    }
+
+    .premium-banner {
+      background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
+      border: 1px solid #BFDBFE;
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      margin-top: 16px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      line-height: 1.5;
+    }
+
+    .premium-banner .badge-pro {
+      background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .user-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+
+    .user-name {
+      font-size: 12px;
+      color: var(--text-light);
+    }
+
+    /* ============================================
+       CARD COMPONENT
+       ============================================ */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+      transition: box-shadow var(--transition);
+      animation: fadeUp 0.5s ease both;
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .card:nth-child(2) {
+      animation-delay: 0.08s;
+    }
+
+    .card:nth-child(3) {
+      animation-delay: 0.16s;
+    }
+
+    .card:nth-child(4) {
+      animation-delay: 0.24s;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .card-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .card-icon.style {
+      background: #EDE9FE;
+    }
+
+    .card-icon.lecture {
+      background: var(--accent-ultra-light);
+    }
+
+    .card-icon.adjust {
+      background: #FEF3C7;
+    }
+
+    .card-icon.result {
+      background: var(--success-light);
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-top: 1px;
+    }
+
+    /* ============================================
+       FORM ELEMENTS
+       ============================================ */
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    textarea,
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+      line-height: 1.6;
+    }
+
+    textarea:focus,
+    input[type="text"]:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    textarea::placeholder,
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      cursor: pointer;
+      transition: border-color var(--transition);
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    /* ============================================
+       BUTTONS
+       ============================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 20px;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      outline: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.15);
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+
+    .btn:hover::after {
+      opacity: 1;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 1px 2px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: #F3F4F6;
+      border-color: #D1D5DB;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .btn-success:hover {
+      background: #059669;
+    }
+
+    .btn-lg {
+      padding: 14px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: var(--radius);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    /* ============================================
+       STYLE ANALYSIS — My Style
+       ============================================ */
+    .style-saved-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--success-light);
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 500;
+      animation: fadeUp 0.3s ease;
+    }
+
+    .style-saved-banner.show {
+      display: flex;
+    }
+
+    .style-stats {
+      display: none;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .style-stats.show {
+      display: grid;
+    }
+
+    .stat-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .style-patterns {
+      display: none;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: var(--accent-ultra-light);
+      border: 1px solid var(--accent-light);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-light);
+    }
+
+    .style-patterns.show {
+      display: block;
+    }
+
+    .style-patterns strong {
+      color: var(--text);
+    }
+
+    .reset-style-btn {
+      display: none;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      text-decoration: underline;
+    }
+
+    .reset-style-btn.show {
+      display: inline-block;
+    }
+
+    /* ============================================
+       PDF UPLOAD
+       ============================================ */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      margin-top: 12px;
+      position: relative;
+    }
+
+    .upload-area:hover {
+      border-color: var(--accent);
+      background: var(--accent-ultra-light);
+    }
+
+    .upload-area.dragover {
+      border-color: var(--accent);
+      background: var(--accent-ultra-light);
+    }
+
+    .upload-area .upload-icon {
+      font-size: 28px;
+      margin-bottom: 6px;
+    }
+
+    .upload-area .upload-text {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .upload-area .upload-text strong {
+      color: var(--accent);
+    }
+
+    .upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .file-name-display {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--success);
+      font-weight: 500;
+    }
+
+    .file-name-display.show {
+      display: flex;
+    }
+
+    .upload-formats {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    .file-loading {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .file-loading.show {
+      display: flex;
+    }
+
+    .or-divider {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin: 14px 0;
+      position: relative;
+    }
+
+    .or-divider::before,
+    .or-divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: calc(50% - 20px);
+      height: 1px;
+      background: var(--border);
+    }
+
+    .or-divider::before {
+      left: 0;
+    }
+
+    .or-divider::after {
+      right: 0;
+    }
+
+    /* ============================================
+       QUALITY SLIDER
+       ============================================ */
+    .slider-container {
+      padding: 4px 0;
+    }
+
+    .slider-track {
+      position: relative;
+      margin: 20px 0 12px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right, #DBEAFE, var(--accent));
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 3px solid #fff;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.35);
+      cursor: pointer;
+      transition: box-shadow var(--transition), transform var(--transition);
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      box-shadow: 0 2px 10px rgba(59, 130, 246, 0.5);
+      transform: scale(1.1);
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .slider-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: all var(--transition);
+      text-align: center;
+      flex: 1;
+    }
+
+    .slider-label:hover {
+      color: var(--accent);
+    }
+
+    .slider-label.active {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .slider-current {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .slider-current .level-badge {
+      display: inline-block;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+
+    .dept-select {
+      margin-top: 20px;
+    }
+
+    /* ============================================
+       RESULT AREA
+       ============================================ */
+    .result-card {
+      display: block;
+    }
+
+    .result-text {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 20px;
+      font-size: 14px;
+      line-height: 1.9;
+      color: var(--text);
+      min-height: 100px;
+      white-space: pre-wrap;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .copy-feedback {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--success);
+      font-weight: 500;
+      margin-top: 10px;
+      animation: fadeUp 0.3s ease;
+    }
+
+    .copy-feedback.show {
+      display: flex;
+    }
+
+    /* ============================================
+       LOADING SPINNER
+       ============================================ */
+    .loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 32px 0;
+    }
+
+    .loading.show {
+      display: flex;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ============================================
+       RESPONSIVE
+       ============================================ */
+    @media (max-width: 600px) {
+      .container {
+        padding: 16px 16px 60px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      .style-stats {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+
+      .stat-item {
+        padding: 8px;
+      }
+
+      .stat-value {
+        font-size: 16px;
+      }
+
+      .result-actions {
+        flex-direction: column;
+      }
+
+      .header-inner {
+        padding: 0 16px;
+      }
+    }
+
+    /* ============================================
+       LANGUAGE TOGGLE
+       ============================================ */
+    .lang-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 2px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .lang-toggle span {
+      padding: 4px 10px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      color: var(--text-muted);
+    }
+
+    .lang-toggle span.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3);
+    }
+
+    /* ============================================
+       UTILITY
+       ============================================ */
+    .mt-12 {
+      margin-top: 12px;
+    }
+
+    .mt-16 {
+      margin-top: 16px;
+    }
+
+    .mt-20 {
+      margin-top: 20px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* ============================================
+       TOAST NOTIFICATION
+       ============================================ */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: linear-gradient(135deg, var(--primary), #4f46e5);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 8px 30px rgba(79, 70, 229, 0.35);
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      max-width: 90vw;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ========== HEADER ========== -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">📝</div>
+        <div class="logo-text">AI<span>コメントペーパー</span></div>
+      </div>
+      <div class="user-bar" id="user-bar">
+        <div class="lang-toggle" id="lang-toggle" onclick="toggleLang()">
+          <span id="lang-ja" class="active">JA</span>
+          <span id="lang-en">EN</span>
+        </div>
+        <div class="header-badge" data-i18n="headerBadge">学習支援ツール</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== MAIN ========== -->
+  <main class="container">
+    <div class="main-grid">
+      <div class="col-left">
+
+        <!-- ===== SECTION 1: My Style ===== -->
+        <section class="card" id="style-section">
+          <div class="card-header">
+            <div class="card-icon style">✍️</div>
+            <div>
+              <div class="card-title" data-i18n="styleTitle">文体同期（My Style）</div>
+              <div class="card-subtitle" data-i18n="styleSubtitle">フィンガープリントにより、前回の文脈を維持。精度が格段に向上します</div>
+            </div>
+          </div>
+
+          <div class="style-saved-banner" id="style-banner">
+            <span data-i18n="styleSaved">✅ 文体データが保存されています</span>
+          </div>
+
+          <div id="style-input-area">
+            <label for="style-text" data-i18n="styleLabel">過去のレポート・コメントを貼り付け</label>
+            <textarea id="style-text" data-i18n-placeholder="stylePlaceholder"
+              placeholder="ここに過去のレポートやコメントペーパーの文章を貼り付けてください。&#10;語尾の癖や漢字の使い方、文章のリズムを解析します。"></textarea>
+            <button class="btn btn-primary mt-16" id="analyze-btn" onclick="analyzeStyle()">
+              <span data-i18n="analyzeBtn">🔍 文体を解析・同期</span>
+            </button>
+          </div>
+
+          <div class="style-stats" id="style-stats">
+            <div class="stat-item">
+              <div class="stat-value" id="stat-kanji">—</div>
+              <div class="stat-label" data-i18n="statKanji">漢字率</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="stat-avg-len">—</div>
+              <div class="stat-label" data-i18n="statAvgLen">平均文長</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="stat-endings">—</div>
+              <div class="stat-label" data-i18n="statEndings">語尾タイプ</div>
+            </div>
+          </div>
+
+          <div class="style-patterns" id="style-patterns"></div>
+
+          <button class="reset-style-btn" id="reset-style-btn" onclick="resetStyle()">
+            <span data-i18n="resetStyle">文体データをリセット</span>
+          </button>
+        </section>
+
+        <!-- ===== SECTION 2: 講義ソース ===== -->
+        <section class="card" id="lecture-section">
+          <div class="card-header">
+            <div class="card-icon lecture">📖</div>
+            <div>
+              <div class="card-title" data-i18n="lectureTitle">講義ソース入力</div>
+              <div class="card-subtitle" data-i18n="lectureSubtitle">講義名とレジュメの内容を入力してください</div>
+            </div>
+          </div>
+
+          <label for="lecture-name" data-i18n="lectureName">講義名</label>
+          <input type="text" id="lecture-name" data-i18n-placeholder="lectureNamePH" placeholder="例：社会学概論、メディア論Ⅱ">
+
+          <div class="mt-16">
+            <label for="resume-text" data-i18n="resumeLabel">レジュメ内容（テキスト入力）</label>
+            <textarea id="resume-text" data-i18n-placeholder="resumePH"
+              placeholder="レジュメの内容をここに貼り付けるか、下の欄からファイルをアップロードしてください。"></textarea>
+          </div>
+
+          <div class="or-divider" data-i18n="orDivider">または</div>
+
+          <div class="upload-area" id="upload-area">
+            <input type="file" accept=".pdf,.docx,.pptx" id="file-input" onchange="handleFileUpload(event)">
+            <div class="upload-icon">📄</div>
+            <div class="upload-text" data-i18n="uploadText"><strong>ファイルをドラッグ＆ドロップ</strong>またはクリックして選択</div>
+            <div class="upload-formats" data-i18n="uploadFormats">対応形式：PDF, Word (.docx), PowerPoint (.pptx)</div>
+          </div>
+          <div class="file-name-display" id="file-name-display">
+            📎 <span id="file-name-text"></span>
+          </div>
+          <div class="file-loading" id="file-loading">
+            <div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>
+            <span data-i18n="fileLoading">ドキュメントを読み解いています...</span>
+          </div>
+        </section>
+
+        <!-- ===== SECTION 3: 調整パネル ===== -->
+        <section class="card" id="adjust-section">
+          <div class="card-header">
+            <div class="card-icon adjust">🎛️</div>
+            <div>
+              <div class="card-title" data-i18n="adjustTitle">調整パネル</div>
+              <div class="card-subtitle" data-i18n="adjustSubtitle">生成する文章のレベルとトーンを設定</div>
+            </div>
+          </div>
+
+          <div class="slider-container">
+            <label data-i18n="sliderLabel">対象レベル</label>
+            <div class="slider-current">
+              <span class="level-badge" id="level-badge">50% — 大学生（標準）</span>
+            </div>
+            <div class="slider-track">
+              <input type="range" id="quality-slider" min="1" max="5" value="3" step="1"
+                oninput="updateSlider(this.value)">
+            </div>
+            <div class="slider-labels">
+              <span class="slider-label" data-i18n="sliderL1" onclick="setSlider(1)">10%<br>中学生</span>
+              <span class="slider-label" data-i18n="sliderL2" onclick="setSlider(2)">30%<br>高校生</span>
+              <span class="slider-label active" data-i18n="sliderL3" onclick="setSlider(3)">50%<br>大学生</span>
+              <span class="slider-label" data-i18n="sliderL4" onclick="setSlider(4)">70%<br>真面目</span>
+              <span class="slider-label" data-i18n="sliderL5" onclick="setSlider(5)">90%<br>大学院</span>
+            </div>
+          </div>
+
+          <div class="dept-select">
+            <label for="dept-filter" data-i18n="deptLabel">学部トーン（オプション）</label>
+            <select id="dept-filter">
+              <option value="none" data-i18n="deptNone">なし</option>
+              <option value="science-eng" data-i18n="deptSci">理系・工学部</option>
+              <option value="social-psych" data-i18n="deptSoc">社会・心理学部</option>
+              <option value="econ-biz" data-i18n="deptEcon">経済・経営学部</option>
+              <option value="literature-phil" data-i18n="deptLit">文学・哲学部</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- ===== GENERATE BUTTON ===== -->
+        <div class="gen-btn-wrap">
+          <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="handleGenerate()">
+            <span data-i18n="generateBtn">🚀 リフレクション（下書き）を生成</span>
+          </button>
+        </div>
+
+      </div><!-- /col-left -->
+      <div class="col-right">
+
+        <!-- ===== SECTION 4: 生成結果 ===== -->
+        <section class="card result-card" id="result-section">
+          <div class="card-header">
+            <div class="card-icon result">✨</div>
+            <div>
+              <div class="card-title" data-i18n="resultTitle">生成結果</div>
+              <div class="card-subtitle" data-i18n="resultSubtitle">あなたの文体で生成されたコメントペーパー</div>
+            </div>
+          </div>
+
+          <div id="result-empty" class="result-text"
+            style="text-align:center; color: var(--text-muted); padding: 40px 20px;">
+            <span data-i18n="resultEmpty">✨ ここに生成結果が表示されます</span>
+          </div>
+
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text" data-i18n="loadingText">あなたの文体で下書きを生成しています…</div>
+          </div>
+
+          <div id="result-content" class="hidden">
+            <div class="result-text" id="result-text"></div>
+            <div class="result-actions">
+              <button class="btn btn-success" onclick="copyResult()"><span data-i18n="copyBtn">📋 コピー</span></button>
+              <button class="btn btn-secondary" onclick="generatePaper()"><span data-i18n="regenBtn">🔄
+                  再生成</span></button>
+            </div>
+            <div class="copy-feedback" id="copy-feedback">
+              <span data-i18n="copyFeedback">✅ クリップボードにコピーしました</span>
+            </div>
+          </div>
+          <div class="premium-banner" id="premium-banner">
+            <span class="badge-pro">PRO</span>
+            <span data-i18n="premiumBanner">広告なし・複数ファイル統合・高精度AIで、さらに快適な作成体験を。</span>
+          </div>
+        </section>
+
+      </div><!-- /col-right -->
+    </div><!-- /main-grid -->
+  </main>
+
+  <!-- ========== MODALS ========== -->
+  <div class="modal-overlay" id="login-modal">
+    <div class="modal-box">
+      <div class="modal-icon">🔐</div>
+      <h3 data-i18n="loginTitle">ログインして継続利用</h3>
+      <p data-i18n="loginDesc">文体データの保存と精度向上のために、<br>Googleアカウントでログインしてください。</p>
+      <button class="btn-google" onclick="mockLogin()">
+        <svg width="20" height="20" viewBox="0 0 48 48">
+          <path fill="#4285F4"
+            d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+          <path fill="#34A853"
+            d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+          <path fill="#FBBC05"
+            d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+          <path fill="#EA4335"
+            d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+        </svg>
+        <span data-i18n="loginBtn">Googleでログイン</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="ad-modal">
+    <div class="modal-box">
+      <div class="modal-icon">🎬</div>
+      <h3 data-i18n="adTitle">広告を視聴して生成</h3>
+      <p data-i18n="adDesc">広告の視聴後、自動的に生成が開始されます。<br>広告なしで利用するには、PROプランをご検討ください。</p>
+      <button class="btn-ad" id="ad-watch-btn" onclick="watchAd()">
+        <span data-i18n="adBtn">▶️ 広告を視聴して生成</span>
+      </button>
+      <div class="ad-countdown" id="ad-countdown"></div>
+    </div>
+  </div>
+
+  <!-- ========== JAVASCRIPT ========== -->
+  <script>
+    /* ============================================
+       STATE
+       ============================================ */
+    let styleData = null;
+    let usageCount = parseInt(localStorage.getItem('ac_usageCount') || '0');
+    let isLoggedIn = localStorage.getItem('ac_loggedIn') === 'true';
+    let userTier = localStorage.getItem('ac_userTier') || 'free'; // free | premium
+
+    /* ============================================
+       i18n — LANGUAGE SYSTEM
+       ============================================ */
+    let currentLang = (function () {
+      const saved = localStorage.getItem('ac_lang');
+      if (saved) return saved;
+      const nav = (navigator.language || 'en').toLowerCase();
+      const lang = nav.startsWith('ja') ? 'ja' : 'en';
+      localStorage.setItem('ac_lang', lang);
+      return lang;
+    })();
+
+    const uiText = {
+      ja: {
+        /* — Header — */
+        headerBadge: '学習支援ツール',
+        /* — Style Section — */
+        styleTitle: '文体同期（My Style）',
+        styleSubtitle: 'フィンガープリントにより、前回の文脈を維持。精度が格段に向上します',
+        styleSaved: '✅ 文体データが保存されています',
+        styleLabel: '過去のレポート・コメントを貼り付け',
+        stylePlaceholder: 'ここに過去のレポートやコメントペーパーの文章を貼り付けてください。\n語尾の癖や漢字の使い方、文章のリズムを解析します。',
+        analyzeBtn: '🔍 文体を解析・同期',
+        statKanji: '漢字率',
+        statAvgLen: '平均文長',
+        statEndings: '語尾タイプ',
+        resetStyle: '文体データをリセット',
+        /* — Lecture Section — */
+        lectureTitle: '講義ソース入力',
+        lectureSubtitle: '講義名とレジュメの内容を入力してください',
+        lectureName: '講義名',
+        lectureNamePH: '例：社会学概論、メディア論Ⅱ',
+        resumeLabel: 'レジュメ内容（テキスト入力）',
+        resumePH: 'レジュメの内容をここに貼り付けるか、下の欄からファイルをアップロードしてください。',
+        orDivider: 'または',
+        uploadText: '<strong>ファイルをドラッグ＆ドロップ</strong>またはクリックして選択',
+        uploadFormats: '対応形式：PDF, Word (.docx), PowerPoint (.pptx)',
+        fileLoading: 'ドキュメントを読み解いています...',
+        /* — Adjustment Panel — */
+        adjustTitle: '調整パネル',
+        adjustSubtitle: '生成する文章のレベルとトーンを設定',
+        sliderLabel: '対象レベル',
+        sliderL1: '10%<br>中学生',
+        sliderL2: '30%<br>高校生',
+        sliderL3: '50%<br>大学生',
+        sliderL4: '70%<br>真面目',
+        sliderL5: '90%<br>大学院',
+        deptLabel: '学部トーン（オプション）',
+        deptNone: 'なし',
+        deptSci: '理系・工学部',
+        deptSoc: '社会・心理学部',
+        deptEcon: '経済・経営学部',
+        deptLit: '文学・哲学部',
+        /* — Generate / Result — */
+        generateBtn: '🚀 リフレクション（下書き）を生成',
+        resultTitle: '生成結果',
+        resultSubtitle: 'あなたの文体で生成されたコメントペーパー',
+        resultEmpty: '✨ ここに生成結果が表示されます',
+        loadingText: 'あなたの文体で下書きを生成しています…',
+        copyBtn: '📋 コピー',
+        regenBtn: '🔄 再生成',
+        copyFeedback: '✅ クリップボードにコピーしました',
+        premiumBanner: '広告なし・複数ファイル統合・高精度AIで、さらに快適な作成体験を。',
+        /* — Modals — */
+        loginTitle: 'ログインして継続利用',
+        loginDesc: '文体データの保存と精度向上のために、<br>Googleアカウントでログインしてください。',
+        loginBtn: 'Googleでログイン',
+        adTitle: '広告を視聴して生成',
+        adDesc: '広告の視聴後、自動的に生成が開始されます。<br>広告なしで利用するには、PROプランをご検討ください。',
+        adBtn: '▶️ 広告を視聴して生成',
+        /* — User State — */
+        loggedIn: 'ログイン中',
+        /* — Alerts — */
+        alertNoLecture: '講義名を入力してください。',
+        alertNoResume: 'レジュメの内容を入力してください。',
+        alertUploadLimit: 'ファイルは1つまでアップロードできます（無料版）。\n複数ファイルの統合にはプレミアムプランが必要です。',
+        /* — Toast — */
+        toastLevelDetected: (n, label) => `📊 自動判定：Level ${n}（${label}）`,
+        toastStyleHistoryStored: (c, limit) => `📚 文体学習：${c}/${limit}件を記憶しました`,
+        toastStyleHistoryFull: (c, maxFree, maxPremium) => `📚 文体学習：${c}/${maxFree}件（上限）\n※プレミアムプランで${maxPremium}件まで記憶を拡張できます`,
+        toastStyleDuplicate: '📝 この文章は既に学習済みです',
+      },
+      en: {
+        /* — Header — */
+        headerBadge: 'Learning Tool',
+        /* — Style Section — */
+        styleTitle: 'Style Reference',
+        styleSubtitle: 'Fingerprint analysis retains your previous context for higher accuracy',
+        styleSaved: '✅ Style data synced',
+        styleLabel: 'Paste a previous report or comment',
+        stylePlaceholder: 'Paste your previous writing sample here.\nThe engine will analyze sentence structure, tone, and vocabulary patterns.',
+        analyzeBtn: '🔍 Analyze & Sync',
+        statKanji: 'Kanji %',
+        statAvgLen: 'Avg Length',
+        statEndings: 'Endings',
+        resetStyle: 'Reset style data',
+        /* — Lecture Section — */
+        lectureTitle: 'Source Material',
+        lectureSubtitle: 'Enter lecture name and source content',
+        lectureName: 'Lecture name',
+        lectureNamePH: 'e.g. Introduction to Sociology, Media Theory II',
+        resumeLabel: 'Source content (text input)',
+        resumePH: 'Paste the lecture notes or source material here, or upload a file below.',
+        orDivider: 'or',
+        uploadText: '<strong>Drop files here</strong> or click to upload.',
+        uploadFormats: 'Supported: PDF, Word (.docx), PowerPoint (.pptx)',
+        fileLoading: 'Processing document...',
+        /* — Adjustment Panel — */
+        adjustTitle: 'Parameters',
+        adjustSubtitle: 'Configure output complexity and tone',
+        sliderLabel: 'Lexical Complexity',
+        sliderL1: '10%<br>Basic',
+        sliderL2: '30%<br>Casual',
+        sliderL3: '50%<br>Standard',
+        sliderL4: '70%<br>Advanced',
+        sliderL5: '90%<br>Academic',
+        deptLabel: 'Department tone (optional)',
+        deptNone: 'None',
+        deptSci: 'Science / Engineering',
+        deptSoc: 'Social Sciences / Psychology',
+        deptEcon: 'Economics / Business',
+        deptLit: 'Literature / Philosophy',
+        /* — Generate / Result — */
+        generateBtn: '🚀 Generate',
+        resultTitle: 'Output',
+        resultSubtitle: 'Reflection paper generated in your writing style',
+        resultEmpty: '✨ Output will appear here',
+        loadingText: 'Generating draft in your style…',
+        copyBtn: '📋 Copy to Clipboard',
+        regenBtn: '🔄 Regenerate',
+        copyFeedback: '✅ Copied to clipboard',
+        premiumBanner: 'No ads. Multi-file processing. Higher accuracy. Upgrade to PRO.',
+        /* — Modals — */
+        loginTitle: 'Sign in to continue',
+        loginDesc: 'Sign in with Google to save your style data<br>and improve generation accuracy.',
+        loginBtn: 'Sign in with Google',
+        adTitle: 'Watch an ad to generate',
+        adDesc: 'Generation will begin automatically after the ad.<br>Upgrade to PRO for ad-free access.',
+        adBtn: '▶️ Watch ad & generate',
+        /* — User State — */
+        loggedIn: 'Signed in',
+        /* — Alerts — */
+        alertNoLecture: 'Please enter a lecture name.',
+        alertNoResume: 'Please enter source material content.',
+        alertUploadLimit: 'Error: Upload limit exceeded (1 file maximum).\nMultiple file processing requires a Premium plan.',
+        /* — Toast — */
+        toastLevelDetected: (n, label) => `Analysis complete: Level ${n} detected. Parameters updated.`,
+        toastStyleHistoryStored: (c, limit) => `Style history: ${c}/${limit} samples stored.`,
+        toastStyleHistoryFull: (c, maxFree, maxPremium) => `Style history: ${c}/${maxFree} (limit reached).\nUpgrade to Premium for up to ${maxPremium} samples.`,
+        toastStyleDuplicate: 'This text has already been analyzed.',
+      },
+    };
+
+    /** Get the active phrase pool */
+    function getActiveLang() {
+      return currentLang === 'en' ? (typeof LANG_EN !== 'undefined' ? LANG_EN : LANG) : LANG;
+    }
+
+    /** Get a UI string by key */
+    function t(key) {
+      return (uiText[currentLang] || uiText.ja)[key] || (uiText.ja[key] || key);
+    }
+
+    /** Toggle language and re-render UI */
+    function toggleLang() {
+      currentLang = currentLang === 'ja' ? 'en' : 'ja';
+      localStorage.setItem('ac_lang', currentLang);
+      applyLanguage();
+    }
+
+    /** Apply current language to all data-i18n elements */
+    function applyLanguage() {
+      const dict = uiText[currentLang] || uiText.ja;
+
+      // 1. Swap text content for data-i18n elements
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key] !== undefined) {
+          el.innerHTML = dict[key];
+        }
+      });
+
+      // 2. Swap placeholders
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (dict[key] !== undefined) {
+          el.placeholder = dict[key];
+        }
+      });
+
+      // 3. Update toggle active state
+      document.getElementById('lang-ja').classList.toggle('active', currentLang === 'ja');
+      document.getElementById('lang-en').classList.toggle('active', currentLang === 'en');
+
+      // 4. Update HTML lang attribute and page title
+      document.documentElement.lang = currentLang === 'ja' ? 'ja' : 'en';
+      document.title = currentLang === 'en'
+        ? 'AI Comment Paper — Learning Tool'
+        : 'AIコメントペーパー — 学習支援ツール';
+
+      // 5. Re-render slider label
+      const slider = document.getElementById('quality-slider');
+      if (slider) updateSlider(slider.value);
+
+      // 6. Update header if logged in
+      updateHeaderUser();
+    }
+
+    /* ============================================
+       3-STAGE UX GATE
+       ============================================ */
+    function handleGenerate() {
+      const lectureName = document.getElementById('lecture-name').value.trim();
+      const resumeText = document.getElementById('resume-text').value.trim();
+      if (!lectureName) { alert(t('alertNoLecture')); return; }
+      if (!resumeText) { alert(t('alertNoResume')); return; }
+
+      // Stage 1: Free trial (1st & 2nd use) — no gates
+      if (usageCount < 2) {
+        proceedGeneration();
+        return;
+      }
+      // Stage 2: Require login from 3rd use
+      if (!isLoggedIn) {
+        document.getElementById('login-modal').classList.add('show');
+        return;
+      }
+      // Stage 3: Show ad (unless premium)
+      if (userTier !== 'premium') {
+        document.getElementById('ad-modal').classList.add('show');
+        return;
+      }
+      // Premium — straight through
+      proceedGeneration();
+    }
+
+    function proceedGeneration() {
+      usageCount++;
+      localStorage.setItem('ac_usageCount', usageCount);
+      generatePaper();
+    }
+
+    function mockLogin() {
+      isLoggedIn = true;
+      localStorage.setItem('ac_loggedIn', 'true');
+      document.getElementById('login-modal').classList.remove('show');
+      updateHeaderUser();
+      // After login, show ad modal
+      if (userTier !== 'premium') {
+        setTimeout(() => {
+          document.getElementById('ad-modal').classList.add('show');
+        }, 300);
+      } else {
+        proceedGeneration();
+      }
+    }
+
+    function watchAd() {
+      const btn = document.getElementById('ad-watch-btn');
+      const cdEl = document.getElementById('ad-countdown');
+      btn.disabled = true;
+      btn.textContent = '⏳ 視聴中...';
+      let sec = 5;
+      cdEl.textContent = `あと ${sec} 秒...`;
+      const timer = setInterval(() => {
+        sec--;
+        if (sec <= 0) {
+          clearInterval(timer);
+          cdEl.textContent = '';
+          btn.disabled = false;
+          btn.innerHTML = '▶️ 広告を視聴して生成';
+          document.getElementById('ad-modal').classList.remove('show');
+          proceedGeneration();
+        } else {
+          cdEl.textContent = `あと ${sec} 秒...`;
+        }
+      }, 1000);
+    }
+
+    function updateHeaderUser() {
+      const bar = document.getElementById('user-bar');
+      const langToggle = `
+        <div class="lang-toggle" id="lang-toggle" onclick="toggleLang()">
+          <span id="lang-ja" class="${currentLang === 'ja' ? 'active' : ''}">JA</span>
+          <span id="lang-en" class="${currentLang === 'en' ? 'active' : ''}">EN</span>
+        </div>`;
+      if (isLoggedIn) {
+        bar.innerHTML = `
+          ${langToggle}
+          <div class="user-avatar">👤</div>
+          <span class="user-name">${t('loggedIn')}</span>
+          <div class="header-badge" data-i18n="headerBadge">${t('headerBadge')}</div>
+        `;
+      } else {
+        bar.innerHTML = `
+          ${langToggle}
+          <div class="header-badge" data-i18n="headerBadge">${t('headerBadge')}</div>
+        `;
+      }
+    }
+
+    const BANNED_WORDS = [
+      '要約すると', 'まとめとして', '総じて',
+      '一考の価値がある', '本講義は', '非常に重要', '特筆すべき'
+    ];
+
+    const LEVEL_MAP = {
+      1: {
+        pct: '10%',
+        label: { ja: '中学生レベル', en: 'Basic' },
+        desc: { ja: '10% — 中学生レベル', en: '10% — Basic' },
+      },
+      2: {
+        pct: '30%',
+        label: { ja: '高校生レベル', en: 'Casual' },
+        desc: { ja: '30% — 高校生レベル', en: '30% — Casual' },
+      },
+      3: {
+        pct: '50%',
+        label: { ja: '大学生（標準）', en: 'Standard' },
+        desc: { ja: '50% — 大学生（標準）', en: '50% — Standard' },
+      },
+      4: {
+        pct: '70%',
+        label: { ja: '大学生（真面目）', en: 'Advanced' },
+        desc: { ja: '70% — 大学生（真面目）', en: '70% — Advanced' },
+      },
+      5: {
+        pct: '90%',
+        label: { ja: '大学院・論文', en: 'Academic' },
+        desc: { ja: '90% — 大学院・論文レベル', en: '90% — Academic' },
+      },
+    };
+
+    /* ============================================
+       INIT
+       ============================================ */
+    document.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('commentPaper_styleData');
+      if (saved) {
+        styleData = JSON.parse(saved);
+        showStyleResults(styleData);
+        showSavedBanner();
+      }
+      applyLanguage();   // i18n: apply saved/detected language
+      initFileInput();
+
+      // Drag & drop
+      const uploadArea = document.getElementById('upload-area');
+      uploadArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+      });
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+      });
+      uploadArea.addEventListener('drop', e => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 1 && userTier !== 'premium') {
+          alert('エラー：1ファイルしかアップロードできません。\n\n※複数ファイルを同時に読み込んで解析したい場合は、プレミアムプランへアップグレードしてください。');
+          return;
+        }
+        if (files.length > 0) {
+          processFile(files[0]);
+        }
+      });
+    });
+
+    /* ============================================
+       STYLE ANALYSIS
+       ============================================ */
+    function analyzeStyle() {
+      const text = document.getElementById('style-text').value.trim();
+      if (!text || text.length < 20) {
+        alert('解析するには20文字以上の文章を入力してください。');
+        return;
+      }
+
+      // Kanji ratio
+      const kanjiCount = (text.match(/[\u4E00-\u9FFF]/g) || []).length;
+      const kanjiRatio = Math.round((kanjiCount / text.length) * 100);
+
+      // Sentence analysis
+      const sentences = text.split(/[。！？\n]+/).filter(s => s.trim().length > 0);
+      const avgLength = Math.round(sentences.reduce((a, s) => a + s.length, 0) / sentences.length);
+
+      // Endings analysis
+      const endings = {};
+      const endingPatterns = [
+        { pattern: /だと思う/, label: '〜だと思う' },
+        { pattern: /と思う/, label: '〜と思う' },
+        { pattern: /と思った/, label: '〜と思った' },
+        { pattern: /と感じた/, label: '〜と感じた' },
+        { pattern: /と感じる/, label: '〜と感じる' },
+        { pattern: /ではないだろうか/, label: '〜ではないだろうか' },
+        { pattern: /ではないか/, label: '〜ではないか' },
+        { pattern: /である/, label: '〜である' },
+        { pattern: /のだ/, label: '〜のだ' },
+        { pattern: /のである/, label: '〜のである' },
+        { pattern: /だった/, label: '〜だった' },
+        { pattern: /ました/, label: '〜ました' },
+        { pattern: /です/, label: '〜です' },
+        { pattern: /ます/, label: '〜ます' },
+        { pattern: /だと考える/, label: '〜だと考える' },
+        { pattern: /たい/, label: '〜たい' },
+        { pattern: /かもしれない/, label: '〜かもしれない' },
+        { pattern: /と言える/, label: '〜と言える' },
+      ];
+
+      sentences.forEach(s => {
+        const trimmed = s.trim();
+        endingPatterns.forEach(ep => {
+          if (ep.pattern.test(trimmed)) {
+            endings[ep.label] = (endings[ep.label] || 0) + 1;
+          }
+        });
+      });
+
+      const topEndings = Object.entries(endings)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(e => e[0]);
+
+      // Determine style type
+      const hasDa = topEndings.some(e => e.includes('である') || e.includes('のだ'));
+      const hasDesu = topEndings.some(e => e.includes('です') || e.includes('ます'));
+      let styleType = '混在型';
+      if (hasDa && !hasDesu) styleType = 'だ・である調';
+      else if (hasDesu && !hasDa) styleType = 'です・ます調';
+
+      // Frequent expressions
+      const freqExpressions = [];
+      const exprPatterns = [
+        /しかし/g, /一方で/g, /また/g, /そのため/g, /つまり/g,
+        /例えば/g, /なぜなら/g, /それゆえ/g, /すなわち/g,
+        /確かに/g, /むしろ/g, /ただし/g, /特に/g, /実際に/g
+      ];
+      exprPatterns.forEach(p => {
+        const m = text.match(p);
+        if (m && m.length >= 1) {
+          freqExpressions.push(p.source);
+        }
+      });
+
+      // Hiragana ratio
+      const hiraganaCount = (text.match(/[\u3040-\u309F]/g) || []).length;
+      const hiraganaRatio = Math.round((hiraganaCount / text.length) * 100);
+
+      styleData = {
+        kanjiRatio,
+        hiraganaRatio,
+        avgLength,
+        styleType,
+        topEndings,
+        freqExpressions,
+        sampleText: text.substring(0, 500),
+        sentenceCount: sentences.length,
+      };
+
+      localStorage.setItem('commentPaper_styleData', JSON.stringify(styleData));
+      showStyleResults(styleData);
+      showSavedBanner();
+
+      // 自動レベル判定 & スライダー同期
+      analyzeVocabularyLevel(text, kanjiRatio, avgLength, freqExpressions);
+
+      // ============ 学習履歴の蓄積 ============
+      saveStyleHistory(text);
+    }
+
+    function showStyleResults(data) {
+      document.getElementById('stat-kanji').textContent = data.kanjiRatio + '%';
+      document.getElementById('stat-avg-len').textContent = data.avgLength + '字';
+      document.getElementById('stat-endings').textContent = data.styleType;
+
+      const patternsEl = document.getElementById('style-patterns');
+      let patternsHTML = '<strong>検出された語尾パターン：</strong> ' + (data.topEndings.join('、') || 'なし');
+      if (data.freqExpressions.length > 0) {
+        patternsHTML += '<br><strong>頻出表現：</strong> ' + data.freqExpressions.join('、');
+      }
+      patternsEl.innerHTML = patternsHTML;
+
+      document.getElementById('style-stats').classList.add('show');
+      patternsEl.classList.add('show');
+      document.getElementById('reset-style-btn').classList.add('show');
+    }
+
+    function showSavedBanner() {
+      document.getElementById('style-banner').classList.add('show');
+    }
+
+    function resetStyle() {
+      if (!confirm('文体データをリセットしますか？')) return;
+      localStorage.removeItem('commentPaper_styleData');
+      styleData = null;
+      document.getElementById('style-banner').classList.remove('show');
+      document.getElementById('style-stats').classList.remove('show');
+      document.getElementById('style-patterns').classList.remove('show');
+      document.getElementById('reset-style-btn').classList.remove('show');
+      document.getElementById('style-text').value = '';
+    }
+
+    /* ============================================
+       AI自動レベル判別ロジック
+       ============================================ */
+    const LEVEL_LABELS = {
+      1: '共感型ビギナー',
+      2: '高校生',
+      3: '大学生標準',
+      4: '優等生',
+      5: 'アカデミック',
+    };
+
+    function analyzeVocabularyLevel(text, kanjiRatio, avgSentLen, freqExprs) {
+      let score = 0;
+
+      // 1. 漢字率スコア (0〜25点)
+      if (kanjiRatio >= 35) score += 25;
+      else if (kanjiRatio >= 28) score += 20;
+      else if (kanjiRatio >= 22) score += 15;
+      else if (kanjiRatio >= 15) score += 10;
+      else score += 5;
+
+      // 2. 平均文長スコア (0〜25点)
+      if (avgSentLen >= 60) score += 25;
+      else if (avgSentLen >= 45) score += 20;
+      else if (avgSentLen >= 35) score += 15;
+      else if (avgSentLen >= 25) score += 10;
+      else score += 5;
+
+      // 3. 学術キーワードマッチ (0〜30点)
+      const academicKeywords = [
+        /分析/g, /定義/g, /理論/g, /背景/g, /考察/g, /議論/g,
+        /枠組み/g, /方法論/g, /妥当性/g, /信頼性/g, /仮説/g,
+        /概念/g, /構造/g, /前提/g, /先行研究/g, /実証/g,
+        /批判的/g, /体系的/g, /認識論/g, /パラダイム/g,
+        /検証/g, /推論/g, /変数/g, /尺度/g, /因子/g,
+      ];
+      let kwCount = 0;
+      academicKeywords.forEach(kw => {
+        const m = text.match(kw);
+        if (m) kwCount += m.length;
+      });
+      if (kwCount >= 10) score += 30;
+      else if (kwCount >= 6) score += 24;
+      else if (kwCount >= 3) score += 16;
+      else if (kwCount >= 1) score += 8;
+      else score += 2;
+
+      // 4. 硬い接続詞スコア (0〜20点)
+      const formalConnectors = [
+        /すなわち/g, /換言すれば/g, /それゆえ/g, /翻って/g,
+        /もっとも/g, /畢竟/g, /とりわけ/g, /看取/g,
+        /等閑視/g, /齟齬/g, /射程/g,
+      ];
+      let formalCount = 0;
+      formalConnectors.forEach(fc => {
+        const m = text.match(fc);
+        if (m) formalCount += m.length;
+      });
+      score += Math.min(formalCount * 5, 20);
+
+      // スコア → レベル変換 (0-100 → 1-5)
+      let level;
+      if (score >= 75) level = 5;
+      else if (score >= 55) level = 4;
+      else if (score >= 38) level = 3;
+      else if (score >= 22) level = 2;
+      else level = 1;
+
+      // スライダーを即座に同期
+      setSlider(level);
+
+      // フィードバック表示
+      const label = LEVEL_LABELS[level];
+      showToast(`🔍 語彙レベル判定：Level ${level}（${label}）— スライダーを自動調整しました`);
+
+      return level;
+    }
+
+    function showToast(message, duration = 4000) {
+      // 既存のtoastがあれば削除
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      // アニメーション開始
+      requestAnimationFrame(() => {
+        toast.classList.add('show');
+      });
+
+      // 自動消去
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+      }, duration);
+    }
+
+    /* ============================================
+       FILE HANDLING (PDF / Word / PPT)
+       ============================================ */
+    function initFileInput() {
+      const fileInput = document.getElementById('file-input');
+      if (userTier === 'premium') {
+        fileInput.setAttribute('multiple', '');
+      } else {
+        fileInput.removeAttribute('multiple');
+      }
+    }
+
+    function handleFileUpload(event) {
+      const files = event.target.files;
+      if (files.length > 1 && userTier !== 'premium') {
+        alert('エラー：1ファイルしかアップロードできません。\n\n※複数ファイルを同時に読み込んで解析したい場合は、プレミアムプランへアップグレードしてください。');
+        event.target.value = '';
+        return;
+      }
+      if (files[0]) processFile(files[0]);
+    }
+
+    async function processFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      const supported = ['pdf', 'docx', 'pptx'];
+      if (!supported.includes(ext)) {
+        alert('対応していないファイル形式です。PDF, Word (.docx), PowerPoint (.pptx) をご利用ください。');
+        return;
+      }
+
+      // Show file name & loading
+      document.getElementById('file-name-text').textContent = file.name;
+      document.getElementById('file-name-display').classList.add('show');
+      document.getElementById('file-loading').classList.add('show');
+
+      try {
+        let fullText = '';
+        const arrayBuffer = await file.arrayBuffer();
+
+        if (ext === 'pdf') {
+          fullText = await extractPDF(arrayBuffer);
+        } else if (ext === 'docx') {
+          fullText = await extractWord(arrayBuffer);
+        } else if (ext === 'pptx') {
+          fullText = await extractPPTX(arrayBuffer);
+        }
+
+        document.getElementById('resume-text').value = fullText.trim();
+      } catch (err) {
+        alert('ファイルの読み取りに失敗しました: ' + err.message);
+      } finally {
+        document.getElementById('file-loading').classList.remove('show');
+      }
+    }
+
+    async function extractPDF(arrayBuffer) {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(item => item.str);
+        fullText += strings.join(' ') + '\n';
+      }
+      return fullText;
+    }
+
+    async function extractWord(arrayBuffer) {
+      const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+      return result.value;
+    }
+
+    async function extractPPTX(arrayBuffer) {
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      let allText = '';
+      // Iterate through slide XML files
+      const slideFiles = Object.keys(zip.files)
+        .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+        .sort((a, b) => {
+          const numA = parseInt(a.match(/slide(\d+)/)[1]);
+          const numB = parseInt(b.match(/slide(\d+)/)[1]);
+          return numA - numB;
+        });
+
+      for (const slidePath of slideFiles) {
+        const xmlStr = await zip.files[slidePath].async('string');
+        // Parse XML and extract text nodes (<a:t> tags)
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
+        const textNodes = xmlDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 't');
+        const slideTexts = [];
+        for (let i = 0; i < textNodes.length; i++) {
+          const t = textNodes[i].textContent.trim();
+          if (t) slideTexts.push(t);
+        }
+        if (slideTexts.length > 0) {
+          allText += slideTexts.join(' ') + '\n';
+        }
+      }
+      return allText;
+    }
+
+    /* ============================================
+       SLIDER
+       ============================================ */
+    function updateSlider(val) {
+      val = parseInt(val);
+      const lang = currentLang || 'ja';
+      document.getElementById('level-badge').textContent = LEVEL_MAP[val].desc[lang] || LEVEL_MAP[val].desc.ja;
+
+      document.querySelectorAll('.slider-label').forEach((el, i) => {
+        el.classList.toggle('active', i === val - 1);
+      });
+    }
+
+    function setSlider(val) {
+      document.getElementById('quality-slider').value = val;
+      updateSlider(val);
+    }
+
+    /* ============================================
+       GENERATION LOGIC
+       ============================================ */
+    function generatePaper() {
+      const lectureName = document.getElementById('lecture-name').value.trim();
+      const resumeText = document.getElementById('resume-text').value.trim();
+
+      const level = parseInt(document.getElementById('quality-slider').value);
+      const dept = document.getElementById('dept-filter').value;
+
+      // Show result section with loading
+      const resultSection = document.getElementById('result-section');
+      document.getElementById('result-empty').style.display = 'none';
+      document.getElementById('loading').classList.add('show');
+      document.getElementById('result-content').classList.add('hidden');
+      document.getElementById('copy-feedback').classList.remove('show');
+
+      // Scroll to result
+      resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Simulate generation delay
+      setTimeout(() => {
+        const generated = buildCommentPaper(lectureName, resumeText, level, dept);
+        document.getElementById('result-text').textContent = generated;
+        document.getElementById('loading').classList.remove('show');
+        document.getElementById('result-content').classList.remove('hidden');
+      }, 1500);
+    }
+
+    function buildCommentPaper(lecture, resume, level, dept) {
+      // Extract keywords from resume
+      const keywords = extractKeywords(resume);
+      const mainTopic = keywords[0] || lecture;
+      const subTopic = keywords[1] || '';
+
+      // Determine style parameters
+      const ending = getEndingStyle();
+      const connector = getConnectors(level);
+
+      let output = '';
+
+      switch (level) {
+        case 1: // 10% - 中学生レベル
+          output = generate10(lecture, mainTopic, subTopic, ending, keywords);
+          break;
+        case 2: // 30% - 高校生レベル
+          output = generate30(lecture, mainTopic, subTopic, ending, connector, keywords);
+          break;
+        case 3: // 50% - 大学生（標準）
+          output = generate50(lecture, mainTopic, subTopic, ending, connector, keywords);
+          break;
+        case 4: // 70% - 大学生（真面目）
+          output = generate70(lecture, mainTopic, subTopic, ending, connector, keywords);
+          break;
+        case 5: // 90% - 大学院・論文レベル
+          output = generate90(lecture, mainTopic, subTopic, ending, connector, keywords);
+          break;
+      }
+
+      // 学習履歴からパターンを注入
+      output = injectHistoryPatterns(output, level);
+
+      // --- [DATA FLYWHEEL] テンプレート抽出 & グローバルプール送信 ---
+      const globalTemplate = extractGlobalTemplates(resume);
+      submitToGlobalPool(globalTemplate);
+      // --- [/DATA FLYWHEEL] ---
+
+      // Apply department tone
+      output = applyDeptTone(output, dept);
+
+      // Remove banned words
+      BANNED_WORDS.forEach(w => {
+        output = output.replaceAll(w, '');
+      });
+
+      // Clean up double spaces and line breaks
+      output = output.replace(/\n{3,}/g, '\n\n').trim();
+
+      return output;
+    }
+
+    function extractKeywords(text) {
+      // Japanese text has no natural word boundaries, so we use pattern matching
+      // to extract noun-like compound phrases
+
+      const freq = {};
+
+      // 1. Extract katakana compound words (e.g. ソーシャルメディア, フィルターバブル, アルゴリズム)
+      const katakanaMatches = text.match(/[\u30A1-\u30F6ー]{3,}/g) || [];
+      katakanaMatches.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+
+      // 2. Extract kanji compound words (e.g. 公共圏, 情報選別, 情報リテラシー)
+      const kanjiMatches = text.match(/[\u4E00-\u9FFF]{2,6}/g) || [];
+      const kanjiStopWords = new Set([
+        '本講義', '受講者', '考察', '議論', '目指', '変化', '自身',
+        '批判的', '特に', '講義', '形態', '振り返', '以下', '上記',
+        '場合', '必要', '重要', '理解', '学習', '向上', '利用'
+      ]);
+      kanjiMatches.forEach(w => {
+        if (kanjiStopWords.has(w)) return;
+        freq[w] = (freq[w] || 0) + 1;
+      });
+
+      // 3. Extract mixed kanji+katakana/hiragana noun phrases
+      //    e.g. "情報リテラシー", "メディア利用", "公共圏の変容"
+      const mixedPatterns = [
+        /[\u4E00-\u9FFF]{1,4}[\u30A1-\u30F6ー]{2,}/g,     // kanji+katakana
+        /[\u30A1-\u30F6ー]{2,}[\u4E00-\u9FFF]{1,4}/g,     // katakana+kanji
+        /([\u4E00-\u9FFF\u30A1-\u30F6ー]{2,})の([\u4E00-\u9FFF\u30A1-\u30F6ー]{2,})/g  // Xの Y patterns
+      ];
+      mixedPatterns.forEach(pat => {
+        let match;
+        const regex = new RegExp(pat.source, pat.flags);
+        while ((match = regex.exec(text)) !== null) {
+          const phrase = match[0];
+          if (phrase.length >= 3 && phrase.length <= 15) {
+            freq[phrase] = (freq[phrase] || 0) + 1;
+          }
+        }
+      });
+
+      // Exclude banned-like terms and very generic words
+      const excludeTerms = new Set([
+        '本講義', '受講者', '講義では', '本講義では', 'について', 'における'
+      ]);
+
+      return Object.entries(freq)
+        .filter(([k]) => !excludeTerms.has(k) && k.length >= 2)
+        .sort((a, b) => {
+          // Prefer longer, more specific terms, then by frequency
+          const lenDiff = Math.min(b[0].length, 8) - Math.min(a[0].length, 8);
+          if (lenDiff !== 0) return lenDiff;
+          return b[1] - a[1];
+        })
+        .slice(0, 8)
+        .map(e => e[0]);
+    }
+
+    function getEndingStyle() {
+      if (styleData) {
+        if (styleData.styleType === 'だ・である調') return 'da';
+        if (styleData.styleType === 'です・ます調') return 'desu';
+        return 'mixed';
+      }
+      return 'desu'; // default
+    }
+
+    /* ============================================
+       STYLE HISTORY — 学習履歴の保存と注入
+       ============================================ */
+    function getStyleHistory() {
+      try {
+        return JSON.parse(localStorage.getItem('ac_styleHistory') || '[]');
+      } catch { return []; }
+    }
+
+    function saveStyleHistory(text) {
+      const maxFree = 3;
+      const maxPremium = 30;
+      const limit = userTier === 'premium' ? maxPremium : maxFree;
+
+      let history = getStyleHistory();
+
+      // 重複チェック（同じ文章は保存しない）
+      const snippet = text.substring(0, 200);
+      if (history.some(h => h.substring(0, 200) === snippet)) {
+        showToast('📝 この文章は既に学習済みです');
+        return;
+      }
+
+      history.push(text);
+
+      // 上限超過時に古いものを削除
+      while (history.length > limit) {
+        history.shift();
+      }
+
+      localStorage.setItem('ac_styleHistory', JSON.stringify(history));
+
+      // フィードバック表示
+      const count = history.length;
+      if (userTier !== 'premium' && count >= maxFree) {
+        showToast(`📚 文体学習：${count}/${maxFree}件（上限）\n※プレミアムプランで${maxPremium}件まで記憶を拡張できます`, 5000);
+      } else {
+        showToast(`📚 文体学習：${count}/${limit}件を記憶しました`);
+      }
+    }
+
+    function injectHistoryPatterns(output, level) {
+      const history = getStyleHistory();
+      if (history.length === 0) return output;
+
+      // 履歴テキストを結合して頻出表現を抽出
+      const combined = history.join('');
+
+      // ユーザーの癖パターンを検出
+      const userPatterns = [];
+
+      // 1. 文末表現の癖
+      const endingHabits = [
+        { pattern: /のではないだろうか/g, text: 'のではないだろうか' },
+        { pattern: /と考える/g, text: 'と考える' },
+        { pattern: /と感じた/g, text: 'と感じた' },
+        { pattern: /ように思う/g, text: 'ように思う' },
+        { pattern: /気がする/g, text: '気がする' },
+        { pattern: /べきである/g, text: 'べきである' },
+        { pattern: /にほかならない/g, text: 'にほかならない' },
+        { pattern: /と言えよう/g, text: 'と言えよう' },
+        { pattern: /ことが重要だ/g, text: 'ことが重要だ' },
+        { pattern: /必要がある/g, text: '必要がある' },
+      ];
+
+      endingHabits.forEach(eh => {
+        const m = combined.match(eh.pattern);
+        if (m && m.length >= 2) {
+          userPatterns.push(eh.text);
+        }
+      });
+
+      // 2. 接続表現の癖
+      const connHabits = [
+        { pattern: /確かに/g, text: '確かに' },
+        { pattern: /そもそも/g, text: 'そもそも' },
+        { pattern: /いずれにせよ/g, text: 'いずれにせよ' },
+        { pattern: /率直に言えば/g, text: '率直に言えば' },
+        { pattern: /個人的には/g, text: '個人的には' },
+        { pattern: /正直なところ/g, text: '正直なところ' },
+      ];
+
+      connHabits.forEach(ch => {
+        const m = combined.match(ch.pattern);
+        if (m && m.length >= 1) {
+          userPatterns.push(ch.text);
+        }
+      });
+
+      // パターンを出力に織り込む
+      if (userPatterns.length > 0) {
+        const sentences = output.split('。').filter(s => s.trim());
+        if (sentences.length >= 3) {
+          // 文中の1箇所に癖を注入（自然に見えるよう中盤に挿入）
+          const insertIdx = Math.floor(sentences.length / 2);
+          const habit = pickRandom(userPatterns);
+
+          // 接続表現の場合は文頭に追加
+          if (['確かに', 'そもそも', 'いずれにせよ', '率直に言えば', '個人的には', '正直なところ'].includes(habit)) {
+            sentences[insertIdx] = habit + '、' + sentences[insertIdx].trim();
+          }
+          // 文末表現の場合は末尾を差し替え
+          else if (sentences[insertIdx].length > 10) {
+            // 最後の句読点前の表現を置換候補にする
+            const s = sentences[insertIdx].trim();
+            // ユーザーの文末癖をランダムに追加
+            if (level >= 3 && Math.random() > 0.5) {
+              sentences.splice(insertIdx + 1, 0, `この点は${habit}`);
+            }
+          }
+          output = sentences.join('。') + '。';
+          // 二重句読点の修正
+          output = output.replace(/。。/g, '。');
+        }
+      }
+
+      return output;
+    }
+
+    /* ============================================
+       GLOBAL DATA FLYWHEEL — 集合知テンプレート基盤（モック）
+       ============================================ */
+
+    /** テキストからテンプレートの骨組みを抽出する */
+    function extractGlobalTemplates(text) {
+      if (!text) return "";
+      let template = text;
+
+      // 1. URL を先にマスキング（個人情報保護 & 捏造対策）
+      template = template.replace(/https?:\/\/[^\s」』）】>]+/g, "[URL]");
+
+      // 2. カギ括弧などの引用部分をマスキング（作品名、論文名、固有名詞の保護）
+      template = template.replace(/[「『（【<](.*?)[」』）】>]/g, "「[固有概念]」");
+
+      // 3. 英単語をマスキング（捏造対策）— すでに [] で囲まれたトークンは除外
+      template = template.replace(/(?<!\[)[a-zA-Z]+(?!\w*\])/g, "[ENG]");
+
+      // 4. 数字・年代・パーセンテージをマスキング
+      template = template.replace(/(?<!\[)\d+(\.\d+)?(?!\])/g, "[NUM]");
+
+      return template;
+    }
+
+    /** 抽出テンプレートをグローバル共有プールへ送信するモック */
+    function submitToGlobalPool(template) {
+      console.log("Global pool submission mocked:", template);
+    }
+
+    function e(type, variations) {
+      // Return ending based on style type
+      const v = variations[type] || variations['desu'];
+      return Array.isArray(v) ? v[Math.floor(Math.random() * v.length)] : v;
+    }
+
+    function getConnectors(level) {
+      const pool = getActiveLang();
+      const conn = pool.connectors || LANG.ja.connectors;
+      if (level <= 2) return conn.casual;
+      if (level <= 3) return conn.standard;
+      return conn.formal;
+    }
+
+    function pickRandom(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function pickMultiple(arr, n) {
+      const shuffled = [...arr].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, Math.min(n, shuffled.length));
+    }
+
+    /* ============================================
+       UNIFIED PHRASE-POOL GENERATOR
+       フレーズプール駆動の統合生成エンジン
+       ============================================ */
+    function generateFromPool(lecture, main, sub, ending, level, kw) {
+      const activeLang = getActiveLang();
+      const pool = activeLang[`level${level}`];
+      if (!pool) return currentLang === 'en'
+        ? `In ${lecture}, we learned about ${main}.`
+        : `${lecture}で${main}について学びました。`;
+
+      const conn = getConnectors(level);
+
+      // 1. Opener — フレーズプールから選択
+      const openerFn = pickRandom(pool.openers);
+      let opener = openerFn(lecture, main);
+
+      // 2. Body — 本論展開（2〜3文選択）
+      const bodyCount = level <= 2 ? 2 : level <= 4 ? 2 : 3;
+      const bodyFns = pickMultiple(pool.bodies, bodyCount);
+      let bodyTexts = bodyFns.map(fn => fn(main, sub || kw[1] || ''));
+
+      // 接続詞を本論間に挿入
+      if (bodyTexts.length > 1) {
+        for (let i = 1; i < bodyTexts.length; i++) {
+          bodyTexts[i] = pickRandom(conn) + '、' + bodyTexts[i];
+        }
+      }
+
+      // 3. Reflection — 個人的感想
+      const reflection = pickRandom(pool.reflections);
+
+      // 4. Closing — 締め
+      const closingFn = pickRandom(pool.closings);
+      const closing = closingFn(lecture);
+
+      // 組み立て
+      let parts = [opener, ...bodyTexts, reflection, closing];
+
+      // 語尾変換（styleDataに基づく）
+      let output = parts.join('');
+      output = applyEndingStyle(output, ending);
+
+      return output;
+    }
+
+    function applyEndingStyle(text, ending) {
+      if (ending === 'da') {
+        // です→だ, ました→た, でした→だった
+        text = text.replace(/です。/g, 'だ。');
+        text = text.replace(/でした。/g, 'だった。');
+        text = text.replace(/ました。/g, 'た。');
+        text = text.replace(/ています/g, 'ている');
+        text = text.replace(/ません/g, 'ない');
+      } else if (ending === 'desu') {
+        // だ。→です。, った。→ました。 (selective)
+        text = text.replace(/と思う。/g, 'と思います。');
+        text = text.replace(/と感じた。/g, 'と感じました。');
+        text = text.replace(/だろう。/g, 'でしょう。');
+      }
+      // mixed: そのまま
+      return text;
+    }
+
+    /* Legacy wrappers — buildCommentPaper から呼び出される */
+    function generate10(lecture, main, sub, ending, kw) {
+      return generateFromPool(lecture, main, sub, ending, 1, kw);
+    }
+    function generate30(lecture, main, sub, ending, conn, kw) {
+      return generateFromPool(lecture, main, sub, ending, 2, kw);
+    }
+    function generate50(lecture, main, sub, ending, conn, kw) {
+      return generateFromPool(lecture, main, sub, ending, 3, kw);
+    }
+    function generate70(lecture, main, sub, ending, conn, kw) {
+      return generateFromPool(lecture, main, sub, ending, 4, kw);
+    }
+    function generate90(lecture, main, sub, ending, conn, kw) {
+      return generateFromPool(lecture, main, sub, ending, 5, kw);
+    }
+
+    /* ============================================
+       DEPARTMENT TONE
+       ============================================ */
+    function applyDeptTone(text, dept) {
+      switch (dept) {
+        case 'science-eng':
+          // 理系・工学部: データ・論理重視、感情語を抑制
+          text = text
+            .replace(/面白かった/g, '興味深いメカニズムだった')
+            .replace(/面白い/g, '合理的な構造を持つ')
+            .replace(/気になった/g, 'その効率性について検討の余地がある')
+            .replace(/気づかされた/g, 'データが示す傾向から読み取ることができた')
+            .replace(/印象に残/g, '定量的な観点から注目に値す')
+            .replace(/理解を深めて/g, 'メカニズムの解明に向けて分析を進めて')
+            .replace(/具体的な事例/g, '実験データや数値的根拠');
+          break;
+        case 'social-psych':
+          // 社会・心理学部: 人間行動・社会構造の視点
+          text = text
+            .replace(/面白かった/g, '社会的背景を考えると示唆的だった')
+            .replace(/気になった/g, 'その心理的要因についてさらに考察したい')
+            .replace(/気づかされた/g, '人間の行動パターンという観点から新たな気づきを得た')
+            .replace(/印象に残/g, '社会構造との関連で考えると印象的であ')
+            .replace(/理解を深めて/g, '社会的・心理的メカニズムの観点から分析を進めて')
+            .replace(/具体的な事例/g, 'フィールドワークや調査データ');
+          break;
+        case 'econ-biz':
+          // 経済・経営学部: コスト・市場・効率・インセンティブ
+          text = text
+            .replace(/面白かった/g, '実用性の観点から有益だった')
+            .replace(/気になった/g, 'その費用対効果や市場への影響を検討したい')
+            .replace(/気づかされた/g, 'インセンティブ構造の面から再認識させられた')
+            .replace(/印象に残/g, '経済的合理性の観点から注目すべきであ')
+            .replace(/理解を深めて/g, '市場メカニズムと効率性の分析を進めて')
+            .replace(/具体的な事例/g, '市場データや企業事例');
+          break;
+        case 'literature-phil':
+          // 文学・哲学部: 語彙豊か、抽象的・思索的
+          text = text
+            .replace(/面白かった/g, '深い示唆を含んでいた')
+            .replace(/気になった/g, 'その根底にある思想について思索を巡らせたい')
+            .replace(/気づかされた/g, '概念の再定義を迫られるような知的刺激を受けた')
+            .replace(/印象に残/g, '言葉の多層的な意味合いとして印象深くあ')
+            .replace(/理解を深めて/g, 'テクストの読みを深め、思索の射程を広げて')
+            .replace(/具体的な事例/g, '文学作品や哲学的テクスト');
+          break;
+      }
+      return text;
+    }
+
+    /* ============================================
+       COPY TO CLIPBOARD
+       ============================================ */
+    function copyResult() {
+      const text = document.getElementById('result-text').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const feedback = document.getElementById('copy-feedback');
+        feedback.classList.add('show');
+        setTimeout(() => feedback.classList.remove('show'), 2500);
+      });
+    }
+  </script>
+</body>
+
+</html>
