@@ -1062,8 +1062,9 @@
           <div class="card-header">
             <div class="card-icon style">✍️</div>
             <div>
-              <div class="card-title" data-i18n="styleTitle">文体同期（My Style）</div>
-              <div class="card-subtitle" data-i18n="styleSubtitle">フィンガープリントにより、前回の文脈を維持。精度が格段に向上します</div>
+              <div class="card-title" data-i18n="styleTitle">My Style</div>
+              <div class="card-subtitle" data-i18n="styleSubtitle">
+                あなたの文章の癖を学習し、自然な文章を再現します。過去のデータを反映することで、生成精度が格段に向上します。</div>
             </div>
           </div>
 
@@ -1166,7 +1167,28 @@
             </div>
           </div>
 
-          <div class="dept-select">
+          <!-- 目標文字数スライダー -->
+          <div class="length-slider mt-20">
+            <label data-i18n="lengthLabel">目標文字数</label>
+            <div class="slider-current">
+              <span class="level-badge" id="length-badge">300文字</span>
+            </div>
+            <div class="slider-track">
+              <input type="range" id="length-slider" min="100" max="600" value="300" step="100"
+                oninput="updateLengthSlider(this.value)">
+            </div>
+          </div>
+
+          <!-- カウントモード -->
+          <div class="count-mode mt-16">
+            <label data-i18n="countModeLabel">カウント方式</label>
+            <select id="count-mode">
+              <option value="char" data-i18n="countChar">文字数</option>
+              <option value="word" data-i18n="countWord">語数（句読点除外）</option>
+            </select>
+          </div>
+
+          <div class="dept-select mt-16">
             <label for="dept-filter" data-i18n="deptLabel">学部トーン（オプション）</label>
             <select id="dept-filter">
               <option value="none" data-i18n="deptNone">なし</option>
@@ -1183,6 +1205,9 @@
           <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="handleGenerate()">
             <span data-i18n="generateBtn">🚀 リフレクション（下書き）を生成</span>
           </button>
+          <div id="daily-limit-text" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:8px;">
+            今日の残り利用枠：5 / 5
+          </div>
         </div>
 
       </div><!-- /col-left -->
@@ -1273,6 +1298,39 @@
     let isLoggedIn = localStorage.getItem('ac_loggedIn') === 'true';
     let userTier = localStorage.getItem('ac_userTier') || 'free'; // free | premium
 
+    /* — Daily Limit — */
+    const DAILY_LIMIT = 5;
+
+    function getDailyUsage() {
+      try {
+        const data = JSON.parse(localStorage.getItem('ac_dailyUsage') || '{}');
+        const today = new Date().toISOString().slice(0, 10);
+        return (data.date === today) ? data.count : 0;
+      } catch { return 0; }
+    }
+
+    function incrementDailyUsage() {
+      const today = new Date().toISOString().slice(0, 10);
+      const current = getDailyUsage();
+      localStorage.setItem('ac_dailyUsage', JSON.stringify({ date: today, count: current + 1 }));
+      updateDailyLimitUI();
+    }
+
+    function updateDailyLimitUI() {
+      const remaining = DAILY_LIMIT - getDailyUsage();
+      const el = document.getElementById('daily-limit-text');
+      if (!el) return;
+      el.textContent = currentLang === 'en'
+        ? `Remaining today: ${remaining} / ${DAILY_LIMIT}`
+        : `今日の残り利用枠：${remaining} / ${DAILY_LIMIT}`;
+      const btn = document.getElementById('generate-btn');
+      if (remaining <= 0) {
+        btn.disabled = true;
+      } else {
+        btn.disabled = false;
+      }
+    }
+
     /* ============================================
        i18n — LANGUAGE SYSTEM
        ============================================ */
@@ -1290,8 +1348,8 @@
         /* — Header — */
         headerBadge: '学習支援ツール',
         /* — Style Section — */
-        styleTitle: '文体同期（My Style）',
-        styleSubtitle: 'フィンガープリントにより、前回の文脈を維持。精度が格段に向上します',
+        styleTitle: 'My Style',
+        styleSubtitle: 'あなたの文章の癖を学習し、自然な文章を再現します。過去のデータを反映することで、生成精度が格段に向上します。',
         styleSaved: '✅ 文体データが保存されています',
         styleLabel: '過去のレポート・コメントを貼り付け',
         stylePlaceholder: 'ここに過去のレポートやコメントペーパーの文章を貼り付けてください。\n語尾の癖や漢字の使い方、文章のリズムを解析します。',
@@ -1354,20 +1412,27 @@
         toastStyleHistoryStored: (c, limit) => `📚 文体学習：${c}/${limit}件を記憶しました`,
         toastStyleHistoryFull: (c, maxFree, maxPremium) => `📚 文体学習：${c}/${maxFree}件（上限）\n※プレミアムプランで${maxPremium}件まで記憶を拡張できます`,
         toastStyleDuplicate: '📝 この文章は既に学習済みです',
+        /* — New Features — */
+        lengthLabel: '目標文字数',
+        lengthUnit: '文字',
+        countModeLabel: 'カウント方式',
+        countChar: '文字数',
+        countWord: '語数（句読点除外）',
+        alertDailyLimit: '本日の利用回数が上限（5回）に達しました。\n明日また利用できます。',
       },
       en: {
         /* — Header — */
         headerBadge: 'Learning Tool',
         /* — Style Section — */
-        styleTitle: 'Style Reference',
-        styleSubtitle: 'Fingerprint analysis retains your previous context for higher accuracy',
+        styleTitle: 'My Style',
+        styleSubtitle: 'Learns your writing habits for natural results. Uses past context to improve accuracy.',
         styleSaved: '✅ Style data synced',
         styleLabel: 'Paste a previous report or comment',
         stylePlaceholder: 'Paste your previous writing sample here.\nThe engine will analyze sentence structure, tone, and vocabulary patterns.',
         analyzeBtn: '🔍 Analyze & Sync',
-        statKanji: 'Kanji %',
-        statAvgLen: 'Avg Length',
-        statEndings: 'Endings',
+        statKanji: 'Avg Word Len',
+        statAvgLen: 'Avg Sentence',
+        statEndings: 'Tone',
         resetStyle: 'Reset style data',
         /* — Lecture Section — */
         lectureTitle: 'Source Material',
@@ -1423,6 +1488,59 @@
         toastStyleHistoryStored: (c, limit) => `Style history: ${c}/${limit} samples stored.`,
         toastStyleHistoryFull: (c, maxFree, maxPremium) => `Style history: ${c}/${maxFree} (limit reached).\nUpgrade to Premium for up to ${maxPremium} samples.`,
         toastStyleDuplicate: 'This text has already been analyzed.',
+        /* — New Features — */
+        lengthLabel: 'Target Length',
+        lengthUnit: 'words',
+        countModeLabel: 'Count Mode',
+        countChar: 'Character Count',
+        countWord: 'Word Count',
+        alertDailyLimit: 'Daily usage limit reached (5/5).\nPlease come back tomorrow.',
+      },
+    };
+
+    /* ============================================
+       STYLE ANALYSIS TRANSLATIONS
+       ============================================ */
+    const translations = {
+      ja: {
+        kanji: '漢字率',
+        length: '平均文長',
+        endings: '文末表現',
+        patterns: '検出された語尾パターン：',
+        freqLabel: '頻出表現：',
+        unit: '字',
+        none: 'なし',
+        separator: '、',
+        styleTypeMap: {
+          'だ・である調': 'だ・である調',
+          'です・ます調': 'です・ます調',
+          '混在型': '混在型',
+          'Academic': 'アカデミック',
+          'Semi-Formal': 'セミフォーマル',
+          'Casual': 'カジュアル',
+          'Personal': 'パーソナル',
+          'Neutral': 'ニュートラル',
+        },
+      },
+      en: {
+        kanji: 'Avg. Word Len',
+        length: 'Avg. Sent. Len',
+        endings: 'Tone',
+        patterns: 'Detected Patterns:',
+        freqLabel: 'Frequent Expressions:',
+        unit: 'Words',
+        none: 'None',
+        separator: ', ',
+        styleTypeMap: {
+          'だ・である調': 'Direct (da/dearu)',
+          'です・ます調': 'Polite (desu/masu)',
+          '混在型': 'Mixed',
+          'Academic': 'Academic',
+          'Semi-Formal': 'Semi-Formal',
+          'Casual': 'Casual',
+          'Personal': 'Personal',
+          'Neutral': 'Neutral',
+        },
       },
     };
 
@@ -1477,8 +1595,52 @@
       const slider = document.getElementById('quality-slider');
       if (slider) updateSlider(slider.value);
 
-      // 6. Update header if logged in
+      // 6. Sync length slider for language
+      syncLengthSliderLang();
+
+      // 7. Update daily limit text
+      updateDailyLimitUI();
+
+      // 8. Sync style analysis labels
+      syncStyleLabels();
+
+      // 9. Update header if logged in
       updateHeaderUser();
+    }
+
+    /* ============================================
+       LENGTH SLIDER & COUNT MODE
+       ============================================ */
+    function updateLengthSlider(val) {
+      val = parseInt(val);
+      const unit = t('lengthUnit');
+      document.getElementById('length-badge').textContent = `${val}${unit}`;
+    }
+
+    function syncLengthSliderLang() {
+      const slider = document.getElementById('length-slider');
+      if (!slider) return;
+      if (currentLang === 'en') {
+        slider.min = 50; slider.max = 250; slider.step = 50;
+        if (parseInt(slider.value) > 250) slider.value = 150;
+      } else {
+        slider.min = 100; slider.max = 600; slider.step = 100;
+        if (parseInt(slider.value) < 100) slider.value = 300;
+      }
+      updateLengthSlider(slider.value);
+    }
+
+    function countText(text, mode) {
+      if (!text) return 0;
+      if (currentLang === 'en') {
+        // EN: word count
+        return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+      }
+      if (mode === 'word') {
+        // JA: 句読点・記号・空白・改行を除外した純粋な文字数
+        return text.replace(/[、。！？!?,\.\s\n]/g, '').length;
+      }
+      return text.length; // デフォルト: 文字数
     }
 
     /* ============================================
@@ -1489,6 +1651,12 @@
       const resumeText = document.getElementById('resume-text').value.trim();
       if (!lectureName) { alert(t('alertNoLecture')); return; }
       if (!resumeText) { alert(t('alertNoResume')); return; }
+
+      // Daily limit check
+      if (getDailyUsage() >= DAILY_LIMIT) {
+        alert(t('alertDailyLimit'));
+        return;
+      }
 
       // Stage 1: Free trial (1st & 2nd use) — no gates
       if (usageCount < 2) {
@@ -1512,6 +1680,7 @@
     function proceedGeneration() {
       usageCount++;
       localStorage.setItem('ac_usageCount', usageCount);
+      incrementDailyUsage();
       generatePaper();
     }
 
@@ -1649,117 +1818,215 @@
     function analyzeStyle() {
       const text = document.getElementById('style-text').value.trim();
       if (!text || text.length < 20) {
-        alert('解析するには20文字以上の文章を入力してください。');
+        alert(currentLang === 'en'
+          ? 'Please enter at least 20 characters to analyze.'
+          : '解析するには20文字以上の文章を入力してください。');
         return;
       }
 
-      // Kanji ratio
-      const kanjiCount = (text.match(/[\u4E00-\u9FFF]/g) || []).length;
-      const kanjiRatio = Math.round((kanjiCount / text.length) * 100);
+      if (currentLang === 'en') {
+        // ===== ENGLISH ANALYSIS =====
+        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+        const totalWordLen = words.reduce((a, w) => a + w.replace(/[^a-zA-Z]/g, '').length, 0);
+        const avgWordLen = words.length > 0 ? (totalWordLen / words.length).toFixed(1) : 0;
 
-      // Sentence analysis
-      const sentences = text.split(/[。！？\n]+/).filter(s => s.trim().length > 0);
-      const avgLength = Math.round(sentences.reduce((a, s) => a + s.length, 0) / sentences.length);
+        const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        const avgSentWords = sentences.length > 0
+          ? Math.round(words.length / sentences.length)
+          : 0;
 
-      // Endings analysis
-      const endings = {};
-      const endingPatterns = [
-        { pattern: /だと思う/, label: '〜だと思う' },
-        { pattern: /と思う/, label: '〜と思う' },
-        { pattern: /と思った/, label: '〜と思った' },
-        { pattern: /と感じた/, label: '〜と感じた' },
-        { pattern: /と感じる/, label: '〜と感じる' },
-        { pattern: /ではないだろうか/, label: '〜ではないだろうか' },
-        { pattern: /ではないか/, label: '〜ではないか' },
-        { pattern: /である/, label: '〜である' },
-        { pattern: /のだ/, label: '〜のだ' },
-        { pattern: /のである/, label: '〜のである' },
-        { pattern: /だった/, label: '〜だった' },
-        { pattern: /ました/, label: '〜ました' },
-        { pattern: /です/, label: '〜です' },
-        { pattern: /ます/, label: '〜ます' },
-        { pattern: /だと考える/, label: '〜だと考える' },
-        { pattern: /たい/, label: '〜たい' },
-        { pattern: /かもしれない/, label: '〜かもしれない' },
-        { pattern: /と言える/, label: '〜と言える' },
-      ];
+        // Tone analysis
+        const iMyCount = (text.match(/\b(I|my|me|myself)\b/gi) || []).length;
+        const formalMarkers = (text.match(/\b(therefore|furthermore|moreover|consequently|nevertheless|hence|thus|whereas|nonetheless|notwithstanding)\b/gi) || []).length;
+        const casualMarkers = (text.match(/\b(really|pretty|kind of|sort of|actually|basically|like|stuff|things|got|gonna|wanna)\b/gi) || []).length;
 
-      sentences.forEach(s => {
-        const trimmed = s.trim();
-        endingPatterns.forEach(ep => {
-          if (ep.pattern.test(trimmed)) {
-            endings[ep.label] = (endings[ep.label] || 0) + 1;
+        let toneType = 'Neutral';
+        if (formalMarkers >= 2 && casualMarkers === 0) toneType = 'Academic';
+        else if (formalMarkers >= 1 && iMyCount <= 3) toneType = 'Semi-Formal';
+        else if (casualMarkers >= 2 || iMyCount >= 5) toneType = 'Casual';
+        else if (iMyCount >= 3) toneType = 'Personal';
+
+        // Detected patterns
+        const enConnectors = ['However,', 'Moreover,', 'Furthermore,', 'Therefore,',
+          'In contrast,', 'Nevertheless,', 'For instance,', 'In addition,',
+          'Consequently,', 'On the other hand,'];
+        const foundConnectors = enConnectors.filter(c => text.includes(c));
+
+        const freqExpressions = [];
+        const enExprPatterns = [
+          /\bhowever\b/gi, /\bmoreover\b/gi, /\bfurthermore\b/gi,
+          /\btherefore\b/gi, /\bnevertheless\b/gi, /\bin addition\b/gi,
+          /\bfor example\b/gi, /\bin contrast\b/gi, /\bas a result\b/gi,
+          /\bin other words\b/gi
+        ];
+        enExprPatterns.forEach(p => {
+          const m = text.match(p);
+          if (m && m.length >= 1) freqExpressions.push(m[0]);
+        });
+
+        styleData = {
+          kanjiRatio: avgWordLen,
+          hiraganaRatio: 0,
+          avgLength: avgSentWords,
+          styleType: toneType,
+          topEndings: foundConnectors,
+          freqExpressions,
+          sampleText: text.substring(0, 500),
+          sentenceCount: sentences.length,
+          lang: 'en',
+        };
+
+      } else {
+        // ===== JAPANESE ANALYSIS =====
+        // Kanji ratio
+        const kanjiCount = (text.match(/[\u4E00-\u9FFF]/g) || []).length;
+        const kanjiRatio = Math.round((kanjiCount / text.length) * 100);
+
+        // Sentence analysis
+        const sentences = text.split(/[。！？\n]+/).filter(s => s.trim().length > 0);
+        const avgLength = Math.round(sentences.reduce((a, s) => a + s.length, 0) / sentences.length);
+
+        // Endings analysis
+        const endings = {};
+        const endingPatterns = [
+          { pattern: /だと思う/, label: '〜だと思う' },
+          { pattern: /と思う/, label: '〜と思う' },
+          { pattern: /と思った/, label: '〜と思った' },
+          { pattern: /と感じた/, label: '〜と感じた' },
+          { pattern: /と感じる/, label: '〜と感じる' },
+          { pattern: /ではないだろうか/, label: '〜ではないだろうか' },
+          { pattern: /ではないか/, label: '〜ではないか' },
+          { pattern: /である/, label: '〜である' },
+          { pattern: /のだ/, label: '〜のだ' },
+          { pattern: /のである/, label: '〜のである' },
+          { pattern: /だった/, label: '〜だった' },
+          { pattern: /ました/, label: '〜ました' },
+          { pattern: /です/, label: '〜です' },
+          { pattern: /ます/, label: '〜ます' },
+          { pattern: /だと考える/, label: '〜だと考える' },
+          { pattern: /たい/, label: '〜たい' },
+          { pattern: /かもしれない/, label: '〜かもしれない' },
+          { pattern: /と言える/, label: '〜と言える' },
+        ];
+
+        sentences.forEach(s => {
+          const trimmed = s.trim();
+          endingPatterns.forEach(ep => {
+            if (ep.pattern.test(trimmed)) {
+              endings[ep.label] = (endings[ep.label] || 0) + 1;
+            }
+          });
+        });
+
+        const topEndings = Object.entries(endings)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(e => e[0]);
+
+        // Determine style type
+        const hasDa = topEndings.some(e => e.includes('である') || e.includes('のだ'));
+        const hasDesu = topEndings.some(e => e.includes('です') || e.includes('ます'));
+        let styleType = '混在型';
+        if (hasDa && !hasDesu) styleType = 'だ・である調';
+        else if (hasDesu && !hasDa) styleType = 'です・ます調';
+
+        // Frequent expressions
+        const freqExpressions = [];
+        const exprPatterns = [
+          /しかし/g, /一方で/g, /また/g, /そのため/g, /つまり/g,
+          /例えば/g, /なぜなら/g, /それゆえ/g, /すなわち/g,
+          /確かに/g, /むしろ/g, /ただし/g, /特に/g, /実際に/g
+        ];
+        exprPatterns.forEach(p => {
+          const m = text.match(p);
+          if (m && m.length >= 1) {
+            freqExpressions.push(p.source);
           }
         });
-      });
 
-      const topEndings = Object.entries(endings)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(e => e[0]);
+        // Hiragana ratio
+        const hiraganaCount = (text.match(/[\u3040-\u309F]/g) || []).length;
+        const hiraganaRatio = Math.round((hiraganaCount / text.length) * 100);
 
-      // Determine style type
-      const hasDa = topEndings.some(e => e.includes('である') || e.includes('のだ'));
-      const hasDesu = topEndings.some(e => e.includes('です') || e.includes('ます'));
-      let styleType = '混在型';
-      if (hasDa && !hasDesu) styleType = 'だ・である調';
-      else if (hasDesu && !hasDa) styleType = 'です・ます調';
+        const kanjiRatioVal = kanjiRatio;
 
-      // Frequent expressions
-      const freqExpressions = [];
-      const exprPatterns = [
-        /しかし/g, /一方で/g, /また/g, /そのため/g, /つまり/g,
-        /例えば/g, /なぜなら/g, /それゆえ/g, /すなわち/g,
-        /確かに/g, /むしろ/g, /ただし/g, /特に/g, /実際に/g
-      ];
-      exprPatterns.forEach(p => {
-        const m = text.match(p);
-        if (m && m.length >= 1) {
-          freqExpressions.push(p.source);
-        }
-      });
+        styleData = {
+          kanjiRatio: kanjiRatioVal,
+          hiraganaRatio,
+          avgLength,
+          styleType,
+          topEndings,
+          freqExpressions,
+          sampleText: text.substring(0, 500),
+          sentenceCount: sentences.length,
+          lang: 'ja',
+        };
 
-      // Hiragana ratio
-      const hiraganaCount = (text.match(/[\u3040-\u309F]/g) || []).length;
-      const hiraganaRatio = Math.round((hiraganaCount / text.length) * 100);
-
-      styleData = {
-        kanjiRatio,
-        hiraganaRatio,
-        avgLength,
-        styleType,
-        topEndings,
-        freqExpressions,
-        sampleText: text.substring(0, 500),
-        sentenceCount: sentences.length,
-      };
+        // 自動レベル判定 & スライダー同期
+        analyzeVocabularyLevel(text, kanjiRatioVal, avgLength, freqExpressions);
+      }
 
       localStorage.setItem('commentPaper_styleData', JSON.stringify(styleData));
       showStyleResults(styleData);
       showSavedBanner();
-
-      // 自動レベル判定 & スライダー同期
-      analyzeVocabularyLevel(text, kanjiRatio, avgLength, freqExpressions);
 
       // ============ 学習履歴の蓄積 ============
       saveStyleHistory(text);
     }
 
     function showStyleResults(data) {
-      document.getElementById('stat-kanji').textContent = data.kanjiRatio + '%';
-      document.getElementById('stat-avg-len').textContent = data.avgLength + '字';
-      document.getElementById('stat-endings').textContent = data.styleType;
+      const displayLang = currentLang || 'ja';
+      const tr = translations[displayLang];
 
+      // Values — data.lang は分析時の言語、displayLang は現在のUI言語
+      if (data.lang === 'en') {
+        // EN分析データ: kanjiRatio=avgWordLen, avgLength=avgSentWords
+        document.getElementById('stat-kanji').textContent = data.kanjiRatio;
+        document.getElementById('stat-avg-len').textContent = data.avgLength + ' ' + tr.unit;
+      } else {
+        // JA分析データ: kanjiRatio=漢字率%, avgLength=平均文字数
+        document.getElementById('stat-kanji').textContent = data.kanjiRatio + '%';
+        document.getElementById('stat-avg-len').textContent = data.avgLength + tr.unit;
+      }
+      document.getElementById('stat-endings').textContent = tr.styleTypeMap[data.styleType] || data.styleType;
+
+      // Labels
+      const kanjiLabel = document.querySelector('#style-stats .stat-item:nth-child(1) .stat-label');
+      const lenLabel = document.querySelector('#style-stats .stat-item:nth-child(2) .stat-label');
+      const endLabel = document.querySelector('#style-stats .stat-item:nth-child(3) .stat-label');
+      if (kanjiLabel) kanjiLabel.textContent = tr.kanji;
+      if (lenLabel) lenLabel.textContent = tr.length;
+      if (endLabel) endLabel.textContent = tr.endings;
+
+      // Patterns
       const patternsEl = document.getElementById('style-patterns');
-      let patternsHTML = '<strong>検出された語尾パターン：</strong> ' + (data.topEndings.join('、') || 'なし');
+      const sep = tr.separator;
+      let patternsHTML = '<strong>' + tr.patterns + '</strong> ' + (data.topEndings.join(sep) || tr.none);
       if (data.freqExpressions.length > 0) {
-        patternsHTML += '<br><strong>頻出表現：</strong> ' + data.freqExpressions.join('、');
+        patternsHTML += '<br><strong>' + tr.freqLabel + '</strong> ' + data.freqExpressions.join(sep);
       }
       patternsEl.innerHTML = patternsHTML;
 
       document.getElementById('style-stats').classList.add('show');
-      patternsEl.classList.add('show');
+      document.getElementById('style-patterns').classList.add('show');
       document.getElementById('reset-style-btn').classList.add('show');
+    }
+
+    /** 言語切替時にラベル・単位を動的に更新（値は再計算しない） */
+    function syncStyleLabels() {
+      const tr = translations[currentLang] || translations.ja;
+      // ラベルを更新
+      const kanjiLabel = document.querySelector('#style-stats .stat-item:nth-child(1) .stat-label');
+      const lenLabel = document.querySelector('#style-stats .stat-item:nth-child(2) .stat-label');
+      const endLabel = document.querySelector('#style-stats .stat-item:nth-child(3) .stat-label');
+      if (kanjiLabel) kanjiLabel.textContent = tr.kanji;
+      if (lenLabel) lenLabel.textContent = tr.length;
+      if (endLabel) endLabel.textContent = tr.endings;
+
+      // 既存の分析結果があれば、値の単位とパターン表示も更新
+      if (styleData) {
+        showStyleResults(styleData);
+      }
     }
 
     function showSavedBanner() {
@@ -2075,7 +2342,109 @@
       // Clean up double spaces and line breaks
       output = output.replace(/\n{3,}/g, '\n\n').trim();
 
+      // --- [LENGTH CONTROL] 指定文字数＝最低保証、上限110%で出力 ---
+      output = adjustToTargetLength(output, level, lecture, mainTopic, subTopic, ending, keywords);
+
       return output;
+    }
+
+    /**
+     * adjustToTargetLength — 厳格な文字数制御
+     *
+     * 【ルール】
+     *  - スライダー値 ＝ 最低文字数（1文字でも下回ることは許されない）
+     *  - 上限 ＝ スライダー値の110%
+     *  - 例: 400 → 400〜440字の範囲で必ず出力
+     *  - ハルシネーション防止：捏造された事実や文献は追加しない
+     */
+    function adjustToTargetLength(text, level, lecture, main, sub, ending, kw) {
+      const targetLength = parseInt(document.getElementById('length-slider').value);
+      const countMode = document.getElementById('count-mode').value;
+      const minLen = targetLength;                         // 最低保証（下回り禁止）
+      const maxLen = Math.ceil(targetLength * 1.10);       // 上限110%
+
+      const activeLang = getActiveLang();
+      const pool = activeLang[`level${level}`];
+      const conn = getConnectors(level);
+
+      // ===== Phase 1: 上限超過 → 文単位でトリミング =====
+      let currentLen = countText(text, countMode);
+      if (currentLen > maxLen) {
+        const sep = currentLang === 'en' ? '. ' : '。';
+        const sentences = text.split(sep).filter(s => s.trim());
+        let trimmed = '';
+        for (const s of sentences) {
+          const candidate = trimmed + s + sep;
+          if (countText(candidate, countMode) > maxLen && trimmed.length > 0) break;
+          trimmed = candidate;
+        }
+        text = trimmed.trim();
+      }
+
+      // ===== Phase 2: 下限不足 → フレーズプールから安全に補充 =====
+      currentLen = countText(text, countMode);
+      if (currentLen < minLen && pool) {
+
+        // 2-a: bodies から本論文を追加（最大5回）
+        if (pool.bodies) {
+          let attempts = 0;
+          while (countText(text, countMode) < minLen && attempts < 5) {
+            const c = conn ? pickRandom(conn) : '';
+            const extraFn = pickRandom(pool.bodies);
+            const extra = extraFn(main, sub || kw[1] || '');
+            text = text + (c ? c + '、' : '') + extra;
+            attempts++;
+          }
+        }
+
+        // 2-b: まだ足りなければ reflections を追加
+        currentLen = countText(text, countMode);
+        if (currentLen < minLen && pool.reflections) {
+          const reflection = pickRandom(pool.reflections);
+          text = text + reflection;
+        }
+
+        // 2-c: それでも足りなければ closings を追加
+        currentLen = countText(text, countMode);
+        if (currentLen < minLen && pool.closings) {
+          const closingFn = pickRandom(pool.closings);
+          text = text + closingFn(lecture);
+        }
+      }
+
+      // ===== Phase 3: 微調整 — 再度の上限超過を文単位でカット =====
+      currentLen = countText(text, countMode);
+      if (currentLen > maxLen) {
+        const sep = currentLang === 'en' ? '. ' : '。';
+        const sentences = text.split(sep).filter(s => s.trim());
+        let trimmed = '';
+        for (const s of sentences) {
+          const candidate = trimmed + s + sep;
+          if (countText(candidate, countMode) > maxLen && trimmed.length > 0) break;
+          trimmed = candidate;
+        }
+        text = trimmed.trim();
+        // 文単位トリムで下限を割った場合は強制的に最後の文を戻す
+        if (countText(text, countMode) < minLen && sentences.length > 0) {
+          text = sentences.join(sep) + sep;
+          // 上限超過しても下限を優先
+        }
+      }
+
+      // ===== Phase 4: 最終ハードカット（上限の厳守が下限より劣後） =====
+      // 下限は絶対に死守。上限は可能な限り守るが、下限優先。
+      currentLen = countText(text, countMode);
+      if (currentLen > maxLen && currentLang !== 'en') {
+        // 上限近くの句点でカット
+        const cutPos = maxLen;
+        const snippet = text.substring(0, cutPos);
+        const lastPeriod = snippet.lastIndexOf('。');
+        if (lastPeriod > minLen) {
+          text = text.substring(0, lastPeriod + 1);
+        }
+      }
+
+      return text;
     }
 
     function extractKeywords(text) {
@@ -2289,7 +2658,7 @@
 
     /** 抽出テンプレートをグローバル共有プールへ送信するモック */
     function submitToGlobalPool(template) {
-      console.log("Global pool submission mocked:", template);
+      // モック: 本番環境では API エンドポイントへ送信
     }
 
     function e(type, variations) {
