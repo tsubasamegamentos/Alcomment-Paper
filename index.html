@@ -7,20 +7,26 @@
 
   <meta name="google-site-verification" content="3rckRvHECynAe2w8OLIitJ65VhT8SjqYBJApRsXwBPs" />
 
-  <title>AIcomment | 自分の文体を再現するレポート・リアぺ作成支援ツール</title>
+  <title>AIcomment | 自分の文体を再現するレポート・リアぺ作成支援ツール | Your Style, Your Reflection</title>
   <meta name="description"
-    content="独自のAIエンジン「My Style」があなたの文章の癖を学習し、自然なリアクションペーパーを爆速で作成。架空の論文引用を防止する誠実な設計で、日々の課題提出をスマートにサポート。">
+    content="AIcommentの「My Style」エンジンがあなたの文章の癖を学習し、自然なリアクションペーパーを爆速で作成。Mimic your own writing style with AI—no fake citations, no hallucinations. A drafting assistant built for academic integrity.">
   <meta name="keywords"
-    content="リアぺ, レポート, 大学, コメントペーパー, リアクションペーパー AI, 文章作成, 自動生成, リアぺ 代行, リアぺ ネタ切れ, リアぺ 爆速, My Style">
+    content="リアぺ, レポート, 大学, コメントペーパー, リアクションペーパー AI, 文章作成, 自動生成, リアぺ 代行, リアぺ ネタ切れ, リアぺ 爆速, My Style, Reaction Paper AI, Reflection Paper Assistant, Response Paper, Personalized AI Writing">
 
-  <meta property="og:title" content="AIcomment | あなたの筆致を再現する唯一のリアぺ支援AI">
-  <meta property="og:description" content="「AIっぽさ」はもう卒業。自分の文体を学習させて、自然なリアクションペーパーをサクッと完成。">
+  <meta property="og:title" content="AIcomment | Your Style, Your Reflection — あなたの筆致を再現するリアぺ支援AI">
+  <meta property="og:description"
+    content="Mimic your own writing style with AI. No fake citations, no hallucinations. 「AIっぽさ」はもう卒業。自分の文体で自然なリアペをサクッと完成。">
   <meta property="og:url" content="https://aicomment-paper.vercel.app">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://aicomment-paper.vercel.app/ogp-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://aicomment-paper.vercel.app/">
   <meta name="robots" content="index, follow">
+
+  <!-- hreflang: 多言語対応 -->
+  <link rel="alternate" hreflang="ja" href="https://aicomment-paper.vercel.app/">
+  <link rel="alternate" hreflang="en" href="https://aicomment-paper.vercel.app/">
+  <link rel="alternate" hreflang="x-default" href="https://aicomment-paper.vercel.app/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap"
@@ -1091,7 +1097,8 @@
             <label for="style-text" data-i18n="styleLabel">過去のレポート・コメントを貼り付け</label>
             <textarea id="style-text" data-i18n-placeholder="stylePlaceholder"
               placeholder="ここに過去のレポートやコメントペーパーの文章を貼り付けてください。&#10;語尾の癖や漢字の使い方、文章のリズムを解析します。"></textarea>
-            <button class="btn btn-primary mt-16" id="analyze-btn" onclick="analyzeStyle()">
+            <button class="btn btn-primary mt-16" id="analyze-btn" onclick="analyzeStyle()" data-action="analyze-style"
+              data-lang="ja">
               <span data-i18n="analyzeBtn">🔍 文体を解析・同期</span>
             </button>
           </div>
@@ -1113,7 +1120,8 @@
 
           <div class="style-patterns" id="style-patterns"></div>
 
-          <button class="reset-style-btn" id="reset-style-btn" onclick="resetStyle()">
+          <button class="reset-style-btn" id="reset-style-btn" onclick="resetStyle()" data-action="reset-style"
+            data-lang="ja">
             <span data-i18n="resetStyle">文体データをリセット</span>
           </button>
         </section>
@@ -1217,7 +1225,8 @@
 
         <!-- ===== GENERATE BUTTON ===== -->
         <div class="gen-btn-wrap">
-          <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="handleGenerate()">
+          <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="handleGenerate()"
+            data-action="generate-paper" data-lang="ja">
             <span data-i18n="generateBtn">🚀 リフレクション（下書き）を生成</span>
           </button>
           <div id="daily-limit-text" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:8px;">
@@ -1603,8 +1612,13 @@
       // 4. Update HTML lang attribute and page title
       document.documentElement.lang = currentLang === 'ja' ? 'ja' : 'en';
       document.title = currentLang === 'en'
-        ? 'AI Comment Paper — Learning Tool'
-        : 'AIコメントペーパー — 学習支援ツール';
+        ? 'AIcomment | Your Style, Your Reflection'
+        : 'AIcomment | 自分の文体を再現するリアぺ作成支援ツール';
+
+      // Update data-lang on tracked buttons
+      document.querySelectorAll('[data-lang]').forEach(el => {
+        el.setAttribute('data-lang', currentLang);
+      });
 
       // 5. Re-render slider label
       const slider = document.getElementById('quality-slider');
@@ -1621,6 +1635,9 @@
 
       // 9. Update header if logged in
       updateHeaderUser();
+
+      // 10. Update footer disclaimer language
+      if (typeof updateFooterDisclaimer === 'function') updateFooterDisclaimer();
     }
 
     /* ============================================
@@ -2844,10 +2861,29 @@
   </script>
 
   <footer style="margin-top: 50px; padding: 20px; text-align: center; border-top: 1px solid #eee;">
-    <p style="font-size: 10px; color: #aaa; max-width: 600px; margin: 0 auto; line-height: 1.5;">
-      Disclaimer: 本ツールは文章作成の補助・推敲を目的としたインテリジェント・エディターです。生成内容は必ずご自身で確認し、各機関のポリシーを遵守した上で、下書きや構成の参考としてご利用ください。
+    <p id="footer-disclaimer" style="font-size: 10px; color: #aaa; max-width: 700px; margin: 0 auto; line-height: 1.6;">
     </p>
   </footer>
+
+  <script>
+    // フッター免責事項の言語切替
+    function updateFooterDisclaimer() {
+      const el = document.getElementById('footer-disclaimer');
+      if (!el) return;
+      if (currentLang === 'en') {
+        el.innerHTML = '<strong>Academic Integrity Notice:</strong> AIcomment is a <em>drafting assistant</em> designed to help you organize and refine your own ideas. '
+          + 'It mimics <em>your</em> writing style—it does <strong>not</strong> generate or cite fake academic papers. '
+          + '<strong>Prevents hallucinations</strong> by design: no fabricated references, no invented quotes. '
+          + 'Always review and edit the output before submission, and comply with your institution\'s AI usage policies.';
+      } else {
+        el.innerHTML = 'Disclaimer: 本ツールは文章作成の補助・推敲を目的としたインテリジェント・エディターです。'
+          + '架空の論文引用や捕造された引用を生成しない誠実な設計です。'
+          + '生成内容は必ずご自身で確認し、各機関のポリシーを遵守した上で、下書きや構成の参考としてご利用ください。';
+      }
+    }
+    // 初回表示
+    updateFooterDisclaimer();
+  </script>
 
 </body>
 
